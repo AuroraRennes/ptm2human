@@ -3,6 +3,21 @@
  *
  * tracer-etmv4.c: Core of ETMv4 tracer
  * Copyright (C) 2013  Chih-Chyuan Hwang (hwangcc@csie.nctu.edu.tw)
+ * Copyright (C) 2024  Tai Yue, Yibo Jin, Fengwei Zhang, Zhenyu Ning,
+ *                     Pengfei Wang, Xu Zhou, Kai Lu (the Stalker project)
+ * Copyright (C) 2026  Quentin Ducasse (quentin.ducasse8@gmail.com)
+ *
+ * Modified 2026 by Quentin Ducasse: tracer_atom()/tracer_address() build
+ * AFL coverage into the global trace_bits, and tracer_overflow()/
+ * tracer_exception() count overflow/exception packets. The coverage
+ * construction follows Stalker's implementation.
+ *
+ * Follows the Stalker implementation, which forked ptm2human for
+ * hardware-assisted greybox fuzzing:
+ *   Tai Yue, Yibo Jin, Fengwei Zhang, Zhenyu Ning, Pengfei Wang, Xu Zhou,
+ *   and Kai Lu. "Efficiently Rebuilding Coverage in Hardware-Assisted
+ *   Greybox Fuzzing." RAID '24, pp. 450-464.
+ *   https://doi.org/10.1145/3678890.3678933
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -24,7 +39,35 @@
 #include "output.h"
 #include "log.h"
 
-static const char *cond_result_token_apsr[] = 
+/* Adapter state, see stalker_adapter.c/h  */
+#define MAX_ATOMS 64
+
+extern unsigned long long text_start_addr;
+extern unsigned long long text_end_addr;
+extern unsigned long long IRQ_addr;
+extern unsigned long long overflow_nums;
+extern unsigned long long exception_nums;
+extern unsigned long long branch_nums;
+extern unsigned long long basic_block;
+extern unsigned long long hash;
+extern unsigned long long pre_basic_block;
+
+extern unsigned int branch_flag;
+extern unsigned int count_atom;
+extern unsigned int bb_mode;
+extern unsigned int from_exception;
+extern unsigned long long atom_nums;
+extern unsigned long long atom_in_slide;
+extern unsigned char *g_trace_bits;
+
+/* Diagnostic only, see stalker_adapter.c. */
+extern unsigned long long addr_pkt_nums;
+extern unsigned long long addr_pkt_irq_swallowed;
+extern unsigned long long addr_pkt_branchflag0;
+extern unsigned long long addr_pkt_out_of_range;
+extern unsigned long long addr_pkt_committed;
+
+static const char *cond_result_token_apsr[] =
 {
     "C flag set",
     "N flag set",
@@ -97,6 +140,10 @@ void tracer_overflow(void *t)
 {
     struct etmv4_tracer *tracer = (struct etmv4_tracer *)t;
 
+#ifdef AFLCS_STALKER_DECODER
+    overflow_nums++;
+#endif
+
     OUTPUT("Discard\n");
 
     tracer_cond_flush(tracer);
@@ -123,6 +170,10 @@ void tracer_ts(void *t, unsigned long long timestamp, int have_cc, unsigned int 
 void tracer_exception(void *t, int type)
 {
     struct etmv4_tracer *tracer = (struct etmv4_tracer *)t;
+
+#ifdef AFLCS_STALKER_DECODER
+    exception_nums++;
+#endif
 
     OUTPUT("Exception - exception type %s, address 0x%016llx\n", (type < 32 && exp_name[type])? exp_name[type]: "Reserved", ADDRESS_REGISTER(tracer)[0].address);
 
@@ -459,6 +510,8 @@ void tracer_address(void *t)
     unsigned long long address = ADDRESS_REGISTER(tracer)[0].address;
     int IS = ADDRESS_REGISTER(tracer)[0].IS;
 
+    /* ptm2human's own output; OUTPUT() compiles it out in the fuzzing build
+     * (see output.h), so it comes back with -DAFLCS_DECODER_VERBOSE. */
     if (SIXTY_FOUR_BIT(tracer)) {
         OUTPUT("Address - Instruction address 0x%016llx, Instruction set Aarch64\n", address);
     } else {
@@ -468,20 +521,101 @@ void tracer_address(void *t)
             OUTPUT("Address - Instruction address 0x%016llx, Instruction set Aarch32 (Thumb)\n", address);
         }
     }
+
+/* Coverage construction: references adapter globals, so it only exists in the
+ * AFLCS_STALKER_DECODER build. */
+#ifdef AFLCS_STALKER_DECODER
+    unsigned short int index;
+
+    addr_pkt_nums++;
+
+    /* Stalker re-armed an entry_flag gate here on re-reaching the ELF entry
+     * point, and every coverage path was conditional on it. Removed: our
+     * forkserver forks from a constructor, well past _start, so no testcase
+     * re-executes the entry point and the gate could never arm (confirmed on
+     * hardware -- packets were decoded and silently discarded). The ETM range
+     * comparators and the text_start/end_addr check below already constrain
+     * what counts as our code. */
+    if (from_exception) {
+        if (IRQ_addr == 0) {
+            IRQ_addr = address;
+            addr_pkt_irq_swallowed++;
+            return;
+        }
+    }
+
+    /* Diagnostic only */
+    if (!branch_flag) {
+        addr_pkt_branchflag0++;
+    } else if (!(address >= text_start_addr && address <= text_end_addr)) {
+        addr_pkt_out_of_range++;
+    }
+
+    if (branch_flag && address >= text_start_addr && address <= text_end_addr) {
+        if (from_exception) {
+            if (IRQ_addr == address) {
+                from_exception = 0;
+                IRQ_addr = 0;
+                addr_pkt_irq_swallowed++;
+                return;
+            }
+        }
+
+        addr_pkt_committed++;
+        branch_nums += atom_in_slide;
+        if (bb_mode) {
+            if (atom_in_slide > 4) {
+                atom_in_slide = 5;
+            }
+            index = (address + atom_in_slide - 1) ^ pre_basic_block & 0x0000ffff;
+            g_trace_bits[index]++;
+            pre_basic_block = (address + atom_in_slide - 1) >> 1;
+        } else {
+            hash = hash & 0x7fffffffffffffff;
+            index = pre_basic_block ^ (address + hash) & 0x0000ffff;
+            g_trace_bits[index]++;
+            pre_basic_block = (address + hash) >> 1;
+            hash = 0;
+        }
+        atom_in_slide = 1;
+        branch_flag = 0;
+        IRQ_addr = 0;
+    }
+#endif
 }
 
 void tracer_atom(void *t, int type)
 {
     struct etmv4_tracer *tracer = (struct etmv4_tracer *)t;
+    int test_type;
 
     if (type == ATOM_TYPE_E) {
         OUTPUT("ATOM - E\n");
+        test_type = 1;
     } else if (type == ATOM_TYPE_N) {
         OUTPUT("ATOM - N\n");
+        test_type = 0;
     } else {
         LOGE("Invalid ATOM type (%d)\n", type);
         return ;
     }
+
+#ifdef AFLCS_STALKER_DECODER
+    basic_block = (basic_block << 1) | test_type;
+    count_atom++;
+    atom_nums++;
+    /* PORT FIX: masked to trace_bits's actual size (MAP_SIZE=65536) --
+     * unmasked, a full 64-bit basic_block can index far out of bounds. */
+    if (count_atom == MAX_ATOMS) {
+        count_atom = 0;
+        branch_nums++;
+        g_trace_bits[(basic_block ^ pre_basic_block) & 0x0000ffff]++;
+        pre_basic_block = basic_block >> 1;
+        basic_block = 0;
+    }
+#else
+    (void)test_type;
+#endif
 
     /*
      * If p0_key_max is zero, it implies that the target CPU uses no P0 right-hand keys.
