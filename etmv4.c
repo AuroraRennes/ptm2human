@@ -3,6 +3,20 @@
  *
  * etmv4.c: Decoding functions of ETMv4 packets
  * Copyright (C) 2013  Chih-Chyuan Hwang (hwangcc@csie.nctu.edu.tw)
+ * Copyright (C) 2024  Tai Yue, Yibo Jin, Fengwei Zhang, Zhenyu Ning,
+ *                     Pengfei Wang, Xu Zhou, Kai Lu (the Stalker project)
+ * Copyright (C) 2026  Quentin Ducasse (quentin.ducasse8@gmail.com)
+ *
+ * Modified 2026 by Quentin Ducasse: decoding an exception packet sets
+ * from_exception, read by tracer_address() to swallow the address packet an
+ * exception implicitly emits.
+ *
+ * Follows the ETMv4 decoder in Stalker, which forked ptm2human for
+ * hardware-assisted greybox fuzzing:
+ *   Tai Yue, Yibo Jin, Fengwei Zhang, Zhenyu Ning, Pengfei Wang, Xu Zhou,
+ *   and Kai Lu. "Efficiently Rebuilding Coverage in Hardware-Assisted
+ *   Greybox Fuzzing." RAID '24, pp. 450-464.
+ *   https://doi.org/10.1145/3678890.3678933
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -25,6 +39,7 @@
 #include "pktproto.h"
 
 static const unsigned char c_bit = 0x80;
+extern unsigned int from_exception;
 
 DEF_TRACEPKT(extension, 0xff, 0x00);
 DEF_TRACEPKT(trace_info, 0xff, 0x01);
@@ -282,6 +297,11 @@ DECL_DECODE_FN(exception)
         if (data1 & c_bit) {
             data2 = pkt[index++];
         }
+
+#ifdef AFLCS_STALKER_DECODER
+        from_exception = 1;
+#endif
+
         EE = ((data1 & 0x40) >> 5) | (data1 & 0x01);
         TYPE = ((data1 & 0x3E) >> 1) | (data2 & 0x1F);
         P = (data2 & 0x20) >> 5;
