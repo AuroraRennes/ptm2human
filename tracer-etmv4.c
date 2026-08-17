@@ -56,6 +56,8 @@ extern unsigned int branch_flag;
 extern unsigned int count_atom;
 extern unsigned int bb_mode;
 extern unsigned int from_exception;
+extern unsigned int stalker_addr_trace;
+extern unsigned int stalker_addr_seen;
 extern unsigned long long atom_nums;
 extern unsigned long long atom_in_slide;
 extern unsigned char *g_trace_bits;
@@ -528,6 +530,11 @@ void tracer_address(void *t)
     unsigned short int index;
 
     addr_pkt_nums++;
+
+    if (stalker_addr_trace && stalker_addr_seen < stalker_addr_trace) {
+        stalker_addr_seen++;
+        fprintf(stderr, "[ADDR] 0x%llx bflag=%u\n", address, branch_flag);
+    }
 
     /* Stalker re-armed an entry_flag gate here on re-reaching the ELF entry
      * point, and every coverage path was conditional on it. Removed: our

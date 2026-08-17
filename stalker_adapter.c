@@ -58,6 +58,11 @@ unsigned long long addr_pkt_branchflag0;
 unsigned long long addr_pkt_out_of_range;
 unsigned long long addr_pkt_committed;
 
+/* AFLCS_STALKER_ADDRTRACE=N: dump the first N reconstructed address packets
+ * of each exec, to see what the decoder actually reconstructs. */
+unsigned int stalker_addr_trace;
+unsigned int stalker_addr_seen;
+
 int stalker_decoder_init(pid_t pid, struct map_info *map_info,
                          int map_info_num)
 {
@@ -112,6 +117,11 @@ int stalker_decoder_init(pid_t pid, struct map_info *map_info,
   text_start_addr = map_info[idx].start;
   text_end_addr = map_info[idx].end;
 
+  {
+    const char *at = getenv("AFLCS_STALKER_ADDRTRACE");
+    stalker_addr_trace = at ? (unsigned int)atoi(at) : 0;
+  }
+
   LOGV("[STALKER-DECODER] text_range=0x%llx-0x%llx (matched %s)\n",
        text_start_addr, text_end_addr, map_info[idx].path);
 
@@ -145,6 +155,7 @@ int stalker_decode_trace(unsigned char *trace_bits, size_t trace_bits_size,
   addr_pkt_branchflag0 = 0;
   addr_pkt_out_of_range = 0;
   addr_pkt_committed = 0;
+  stalker_addr_seen = 0;
   branch_flag = 0;
   from_exception = 0;
   IRQ_addr = 0;
@@ -169,4 +180,23 @@ int stalker_decode_trace(unsigned char *trace_bits, size_t trace_bits_size,
 bool stalker_decode_did_overflow(void)
 {
   return overflow_nums > 0;
+}
+
+void stalker_decoder_get_stats(struct stalker_decode_stats *out)
+{
+  if (!out) {
+    return;
+  }
+
+  out->addr_pkt_nums = addr_pkt_nums;
+  out->addr_pkt_committed = addr_pkt_committed;
+  out->addr_pkt_branchflag0 = addr_pkt_branchflag0;
+  out->addr_pkt_out_of_range = addr_pkt_out_of_range;
+  out->addr_pkt_irq_swallowed = addr_pkt_irq_swallowed;
+  out->atom_nums = atom_nums;
+  out->branch_nums = branch_nums;
+  out->overflow_nums = overflow_nums;
+  out->exception_nums = exception_nums;
+  out->text_start_addr = text_start_addr;
+  out->text_end_addr = text_end_addr;
 }
