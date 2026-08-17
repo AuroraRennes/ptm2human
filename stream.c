@@ -130,9 +130,7 @@ int decode_stream(struct stream *stream)
         if (i >= 35 && i <= 54) {
             /* ATOM-format packet: accumulate branch_flag/atom_in_slide/hash
              * directly from the packet byte instead of going through the
-             * normal tracepkts[]->decode()/tracer_atom() chain.
-             * Stalker guarded this on entry_flag; see stalker_decode_trace()
-             * for why that gate is gone. */
+             * normal tracepkts[]->decode()/tracer_atom() chain. */
             from_exception = 0;
             IRQ_addr = 0;
             len = atom_length[c];

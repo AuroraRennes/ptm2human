@@ -63,6 +63,10 @@ unsigned long long addr_pkt_committed;
 unsigned int stalker_addr_trace;
 unsigned int stalker_addr_seen;
 
+/* AFLCS_STALKER_DEFORMAT: 1 (default) runs the capture through the CoreSight
+ * frame deformatter before decoding, 0 feeds it to the packet decoder raw. */
+unsigned int stalker_deformat = 1;
+
 int stalker_decoder_init(pid_t pid, struct map_info *map_info,
                          int map_info_num)
 {
@@ -108,18 +112,17 @@ int stalker_decoder_init(pid_t pid, struct map_info *map_info,
   }
 
   /* setup_map_info() only records regions carrying the x bit, so this entry
-   * is the binary's executable mapping. Note only this one range is used: a
-   * binary with several executable mappings would have the others silently excluded.
-   *
-   * Note: Stalker additionally parsed the ELF entry point into main_entry_addr,
-   * to re-arm its entry_flag gate once execution re-reached _start. Since our
-   * forkserver sits at libc main, this flag is not needed anymore. */
+   * is the binary's executable mapping. Only this one range is used: a binary
+   * with several executable mappings would have the others silently
+   * excluded. */
   text_start_addr = map_info[idx].start;
   text_end_addr = map_info[idx].end;
 
   {
     const char *at = getenv("AFLCS_STALKER_ADDRTRACE");
+    const char *df = getenv("AFLCS_STALKER_DEFORMAT");
     stalker_addr_trace = at ? (unsigned int)atoi(at) : 0;
+    stalker_deformat = df ? (unsigned int)atoi(df) : 1;
   }
 
   LOGV("[STALKER-DECODER] text_range=0x%llx-0x%llx (matched %s)\n",

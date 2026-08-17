@@ -46,7 +46,10 @@ int debuglog_on = 0;
 /* Global trace contents */
 unsigned char *g_trace_bits;
 
-/* Decodes without formatting */
+/* Selects the deformatting path; see stalker_adapter.c. */
+extern unsigned int stalker_deformat;
+
+/* Decode ETMv4 packets, deformatting them if activated */
 int etmv4_decode(unsigned char *trace_bits, char *buf, int size)
 {
     int ret;
@@ -103,7 +106,9 @@ int etmv4_decode(unsigned char *trace_bits, char *buf, int size)
     }
     memcpy(stream.buff, buf, size);
 
-    ret = decode_stream(&stream);
+    /* Deformat packets if needed with decode_etb_stream */
+    ret = stalker_deformat ? decode_etb_stream(&stream, /*unaligned=*/0)
+                           : decode_stream(&stream);
 
     free((void *)stream.buff);
 

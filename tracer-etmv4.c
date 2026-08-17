@@ -536,13 +536,9 @@ void tracer_address(void *t)
         fprintf(stderr, "[ADDR] 0x%llx bflag=%u\n", address, branch_flag);
     }
 
-    /* Stalker re-armed an entry_flag gate here on re-reaching the ELF entry
-     * point, and every coverage path was conditional on it. Removed: our
-     * forkserver forks from a constructor, well past _start, so no testcase
-     * re-executes the entry point and the gate could never arm (confirmed on
-     * hardware -- packets were decoded and silently discarded). The ETM range
-     * comparators and the text_start/end_addr check below already constrain
-     * what counts as our code. */
+    /* Swallow the address packet that follows an exception packet: it carries
+     * the preferred return address, an interrupted PC rather than a branch
+     * target. */
     if (from_exception) {
         if (IRQ_addr == 0) {
             IRQ_addr = address;
