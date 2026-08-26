@@ -56,6 +56,7 @@ extern unsigned int branch_flag;
 extern unsigned int count_atom;
 extern unsigned int bb_mode;
 extern unsigned int from_exception;
+extern void stalker_exception_resume(void);
 extern unsigned int stalker_addr_trace;
 extern unsigned int stalker_addr_seen;
 extern unsigned long long atom_nums;
@@ -557,8 +558,7 @@ void tracer_address(void *t)
     if (branch_flag && address >= text_start_addr && address <= text_end_addr) {
         if (from_exception) {
             if (IRQ_addr == address) {
-                from_exception = 0;
-                IRQ_addr = 0;
+                stalker_exception_resume();
                 addr_pkt_irq_swallowed++;
                 return;
             }

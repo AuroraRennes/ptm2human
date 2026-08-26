@@ -51,6 +51,14 @@ unsigned int from_exception;
 unsigned long long atom_nums;
 unsigned long long atom_in_slide;
 
+/* Exception-window storage */
+static unsigned long long saved_atom_in_slide;
+static unsigned long long saved_hash;
+static unsigned long long saved_basic_block;
+static unsigned long long saved_pre_basic_block;
+static unsigned int saved_count_atom;
+static unsigned int saved_branch_flag;
+
 /* Diagnostic only */
 unsigned long long addr_pkt_nums;
 unsigned long long addr_pkt_irq_swallowed;
@@ -66,6 +74,43 @@ unsigned int stalker_addr_seen;
 /* AFLCS_STALKER_DEFORMAT: 1 (default) runs the capture through the CoreSight
  * frame deformatter before decoding, 0 feeds it to the packet decoder raw. */
 unsigned int stalker_deformat = 1;
+
+/* Enter an exception window, saving coverage values, restoring them on exception
+ * exit (if cascading, the last one recovers) */
+void stalker_exception_enter(void)
+{
+  exception_nums++;
+
+  if (from_exception) {
+    return; /* cascading exception: keep the outermost snapshot */
+  }
+
+  saved_atom_in_slide = atom_in_slide;
+  saved_hash = hash;
+  saved_basic_block = basic_block;
+  saved_pre_basic_block = pre_basic_block;
+  saved_count_atom = count_atom;
+  saved_branch_flag = branch_flag;
+
+  from_exception = 1;
+}
+
+/* Must run before the resuming ATOM packet accumulates into atom_in_slide /
+ * hash, so that its accumulation lands on the pre-exception state. */
+void stalker_exception_resume(void)
+{
+  if (from_exception) {
+    atom_in_slide = saved_atom_in_slide;
+    hash = saved_hash;
+    basic_block = saved_basic_block;
+    pre_basic_block = saved_pre_basic_block;
+    count_atom = saved_count_atom;
+    branch_flag = saved_branch_flag;
+  }
+
+  from_exception = 0;
+  IRQ_addr = 0;
+}
 
 int stalker_decoder_init(pid_t pid, struct map_info *map_info,
                          int map_info_num)
@@ -164,6 +209,12 @@ int stalker_decode_trace(unsigned char *trace_bits, size_t trace_bits_size,
   IRQ_addr = 0;
   basic_block = 0;
   pre_basic_block = 0;
+  saved_atom_in_slide = 1;
+  saved_hash = 0;
+  saved_basic_block = 0;
+  saved_pre_basic_block = 0;
+  saved_count_atom = 0;
+  saved_branch_flag = 0;
 
   etmv4_decode(trace_bits, (char *)buf, (int)buf_size);
 

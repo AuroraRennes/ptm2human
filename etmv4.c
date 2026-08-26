@@ -40,6 +40,7 @@
 
 static const unsigned char c_bit = 0x80;
 extern unsigned int from_exception;
+extern void stalker_exception_enter(void);
 
 DEF_TRACEPKT(extension, 0xff, 0x00);
 DEF_TRACEPKT(trace_info, 0xff, 0x01);
@@ -299,7 +300,7 @@ DECL_DECODE_FN(exception)
         }
 
 #ifdef AFLCS_STALKER_DECODER
-        from_exception = 1;
+        stalker_exception_enter();
 #endif
 
         EE = ((data1 & 0x40) >> 5) | (data1 & 0x01);

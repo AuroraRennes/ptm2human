@@ -50,6 +50,7 @@ extern unsigned int branch_flag;
 extern unsigned int bb_mode;
 extern unsigned long long hash;
 extern unsigned long long overflow_nums;
+extern void stalker_exception_resume(void);
 
 /* packet_index[c] mirrors etmv4pkts[]'s DEF_TRACEPKT registration
  * order in etmv4.c (index -1 means "no match"); values 35-54 are the
@@ -131,8 +132,7 @@ int decode_stream(struct stream *stream)
             /* ATOM-format packet: accumulate branch_flag/atom_in_slide/hash
              * directly from the packet byte instead of going through the
              * normal tracepkts[]->decode()/tracer_atom() chain. */
-            from_exception = 0;
-            IRQ_addr = 0;
+            stalker_exception_resume();
             len = atom_length[c];
             atom_serial = atom_map[c];
             branch_flag = atom_flag[c];
