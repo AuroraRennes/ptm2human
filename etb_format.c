@@ -58,6 +58,7 @@ int decode_etb_stream(struct stream *etb_stream, int unaligned)
     int ret = 0;
     int nr_stream, pkt_idx, byte_idx, id, cur_id, pre_id, nr_new, i, b, trace_stop = 0;
     int ofs = 0;
+    int last_frame;
     unsigned char c, end, tmp;
     const unsigned char fsync[] = { 0xff, 0xff, 0xff, 0x7f };
 
@@ -80,8 +81,11 @@ int decode_etb_stream(struct stream *etb_stream, int unaligned)
         goto exit_decode_etb_stream;
     }
 
+    /* Highest index a whole 16-byte frame still fits at */
+    last_frame = (int)etb_stream->buff_len - ETB_PACKET_SIZE;
+
     if (unaligned) {
-        for (b = 0; b < etb_stream->buff_len-sizeof(fsync)-1; b++) {
+        for (b = 0; b + (int)sizeof(fsync) <= (int)etb_stream->buff_len; b++) {
             if (memcmp(&fsync, &etb_stream->buff[b], sizeof(fsync)) == 0) {
                 ofs = b+sizeof(fsync); break;
             }
@@ -95,13 +99,17 @@ int decode_etb_stream(struct stream *etb_stream, int unaligned)
     }
     else { ofs = 0; }
 
-    for (pkt_idx = ofs; pkt_idx < etb_stream->buff_len; pkt_idx += ETB_PACKET_SIZE) {
+    for (pkt_idx = ofs; pkt_idx <= last_frame; pkt_idx += ETB_PACKET_SIZE) {
         if (trace_stop) {
             break;
         }
 
         if (memcmp(&fsync, &etb_stream->buff[pkt_idx], sizeof(fsync)) == 0) {
             pkt_idx = pkt_idx+sizeof(fsync);
+            /* The skip can push the frame past the end of the capture. */
+            if (pkt_idx > last_frame) {
+                break;
+            }
         }
 
         end = etb_stream->buff[pkt_idx + ETB_PACKET_SIZE - 1];
