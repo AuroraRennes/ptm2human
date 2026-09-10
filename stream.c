@@ -52,6 +52,7 @@ extern unsigned int branch_flag;
 extern unsigned int bb_mode;
 extern unsigned long long hash;
 extern unsigned long long overflow_nums;
+extern unsigned long long atom_nums;
 extern void stalker_exception_resume(void);
 
 /* packet_index[c]: tracepkts[] index (etmv4.c DEF_TRACEPKT order) of header byte
@@ -196,6 +197,10 @@ int decode_stream(struct stream *stream)
             atom_serial = atom_map[c];
             branch_flag = atom_flag[c];
             atom_in_slide += len;
+            /* tracer_atom() counts these in the CLI build; the fast path is
+             * the only thing that sees them here, so count them here too or
+             * the diagnostic reads a flat zero. */
+            atom_nums += (unsigned long long)len;
             if (bb_mode == 0) {
                 sdbm(atom_serial, len);
             }
