@@ -562,6 +562,11 @@ void tracer_address(void *t)
                 addr_pkt_irq_swallowed++;
                 return;
             }
+            /* The exception returned somewhere else (e.g. an IRQ taken in
+             * libc, out of range): this is a real branch. Close the window
+             * before committing it, or the next ATOM's resume would roll the
+             * state back past this commit. */
+            stalker_exception_resume();
         }
 
         addr_pkt_committed++;
