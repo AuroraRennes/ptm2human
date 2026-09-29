@@ -75,6 +75,14 @@ unsigned int stalker_addr_seen;
  * frame deformatter before decoding, 0 feeds it to the packet decoder raw. */
 unsigned int stalker_deformat = 1;
 
+/* Formatter trace ID to decode, -1 for all; read by etb_format.c. */
+int stalker_trace_id = -1;
+
+void stalker_decoder_set_trace_id(int trace_id)
+{
+  stalker_trace_id = trace_id;
+}
+
 /* Enter an exception window, saving coverage values, restoring them on exception
  * exit (if cascading, the last one recovers) */
 void stalker_exception_enter(void)

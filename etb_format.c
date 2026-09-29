@@ -27,6 +27,10 @@
 #include "log.h"
 #include "output.h"
 
+#ifdef AFLCS_STALKER_DECODER
+extern int stalker_trace_id;
+#endif
+
 #define ETB_PACKET_SIZE 16
 #define NULL_TRACE_SOURCE 0
 
@@ -183,6 +187,14 @@ int decode_etb_stream(struct stream *etb_stream, int unaligned)
 
     for (i = 0; i < nr_stream; i++) {
         LOGD("There are %d bytes in the stream %d\n", stream[i].buff_len, i);
+#ifdef AFLCS_STALKER_DECODER
+        /* Other cores' ETMs share the sink: only the traced CPU's stream is
+         * coverage. stream[] is indexed by trace ID - 1. */
+        if (stalker_trace_id >= 0 && i != stalker_trace_id - 1) {
+            free(stream[i].buff);
+            continue;
+        }
+#endif
         if (stream[i].buff_len != 0) {
             OUTPUT("Decode trace stream of ID %d\n", i);
             decode_stream(&(stream[i]));

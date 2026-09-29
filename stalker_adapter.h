@@ -25,6 +25,11 @@ int stalker_decoder_init(pid_t pid, struct map_info *map_info,
  * in sync. */
 void stalker_decoder_set_bb_mode(int bb_mode);
 
+/* Decode only the formatter stream carrying this trace ID (the traced CPU's
+ * ETM). -1 decodes every stream, which folds other cores' ETMs into the
+ * bitmap whenever their code falls inside the address filter. */
+void stalker_decoder_set_trace_id(int trace_id);
+
 /* Clears trace_bits, resets per-exec decode state, and decodes buf/buf_size
  * into trace_bits. Returns 0 on success, -1 on a hard failure (invalid args). */
 int stalker_decode_trace(unsigned char *trace_bits, size_t trace_bits_size,
