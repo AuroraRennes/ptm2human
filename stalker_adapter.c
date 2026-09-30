@@ -75,6 +75,11 @@ unsigned int stalker_addr_seen;
  * frame deformatter before decoding, 0 feeds it to the packet decoder raw. */
 unsigned int stalker_deformat = 1;
 
+/* AFLCS_STALKER_EXC_SNAPSHOT: 1 snapshots the accumulators on the outermost
+ * exception and restores them on resume; 0 (default) is the artifact's
+ * handling, which only swallows the exception's return address */
+unsigned int stalker_exc_snapshot = 0;
+
 /* Formatter trace ID to decode, -1 for all; read by etb_format.c. */
 int stalker_trace_id = -1;
 
@@ -89,7 +94,8 @@ void stalker_exception_enter(void)
 {
   exception_nums++;
 
-  if (from_exception) {
+  if (from_exception || !stalker_exc_snapshot) {
+    from_exception = 1;
     return; /* cascading exception: keep the outermost snapshot */
   }
 
@@ -107,7 +113,7 @@ void stalker_exception_enter(void)
  * hash, so that its accumulation lands on the pre-exception state. */
 void stalker_exception_resume(void)
 {
-  if (from_exception) {
+  if (from_exception && stalker_exc_snapshot) {
     atom_in_slide = saved_atom_in_slide;
     hash = saved_hash;
     basic_block = saved_basic_block;
@@ -176,6 +182,8 @@ int stalker_decoder_init(pid_t pid, struct map_info *map_info,
     const char *df = getenv("AFLCS_STALKER_DEFORMAT");
     stalker_addr_trace = at ? (unsigned int)atoi(at) : 0;
     stalker_deformat = df ? (unsigned int)atoi(df) : 1;
+    const char *es = getenv("AFLCS_STALKER_EXC_SNAPSHOT");
+    stalker_exc_snapshot = es ? (unsigned int)atoi(es) : 0;
   }
 
   LOGV("[STALKER-DECODER] text_range=0x%llx-0x%llx (matched %s)\n",

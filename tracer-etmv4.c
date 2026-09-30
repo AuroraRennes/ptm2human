@@ -57,6 +57,7 @@ extern unsigned int count_atom;
 extern unsigned int bb_mode;
 extern unsigned int from_exception;
 extern void stalker_exception_resume(void);
+extern unsigned int stalker_exc_snapshot;
 extern unsigned int stalker_addr_trace;
 extern unsigned int stalker_addr_seen;
 extern unsigned long long atom_nums;
@@ -565,8 +566,9 @@ void tracer_address(void *t)
             /* The exception returned somewhere else (e.g. an IRQ taken in
              * libc, out of range): this is a real branch. Close the window
              * before committing it, or the next ATOM's resume would roll the
-             * state back past this commit. */
-            stalker_exception_resume();
+             * state back past this commit. The artifact keeps the window
+             * open here. */
+            if (stalker_exc_snapshot) stalker_exception_resume();
         }
 
         addr_pkt_committed++;
