@@ -34,7 +34,7 @@ extern int stalker_trace_id;
 #define ETB_PACKET_SIZE 16
 #define NULL_TRACE_SOURCE 0
 
-static int init_stream(struct stream *stream, struct stream *parent)
+static int init_stream(struct stream *stream, struct stream *parent, int idx)
 {
     if (!stream) {
         LOGE("Invalid stream pointer\n");
@@ -44,6 +44,18 @@ static int init_stream(struct stream *stream, struct stream *parent)
     memcpy(stream, parent, sizeof(struct stream));
 
     stream->buff_len  = 0;
+
+#ifdef AFLCS_STALKER_DECODER
+    /* Only the selected trace ID is decoded: every other ID below the highest
+     * one seen would get a capture-sized, zeroed buffer that is never read.
+     * Leave it NULL; its bytes are dropped */
+    if (stalker_trace_id >= 0 && idx != stalker_trace_id - 1) {
+        stream->buff = NULL;
+        return 0;
+    }
+#else
+    (void)idx;
+#endif
 
     stream->buff = malloc(parent->buff_len);
     if (!(stream->buff)) {
@@ -80,7 +92,7 @@ int decode_etb_stream(struct stream *etb_stream, int unaligned)
         LOGE("Fail to allocate stream (%s)\n", strerror(errno));
         return -1;
     }
-    if (init_stream(stream, etb_stream)) {
+    if (init_stream(stream, etb_stream, 0)) {
         ret = -1;
         goto exit_decode_etb_stream;
     }
@@ -125,16 +137,16 @@ int decode_etb_stream(struct stream *etb_stream, int unaligned)
                 if ((tmp & 1) &&    /* previous byte is an ID byte */   \
                         end & (1 << (byte_idx / 2))) {
                     /* data corresponds to the previous ID */
-                    if (pre_id < 0) {
-                        /* drop the byte since there is no ID byte yet */
+                    if (pre_id < 0 || !stream[pre_id].buff) {
+                        /* drop the byte: no ID byte yet, or an ID not decoded */
                         continue;
                     }
                     stream[pre_id].buff[stream[pre_id].buff_len] = c;
                     stream[pre_id].buff_len = stream[pre_id].buff_len + 1;
                 } else {
                     /* data corresponds to the new ID */
-                    if (cur_id < 0) {
-                        /* drop the byte since there is no ID byte yet */
+                    if (cur_id < 0 || !stream[cur_id].buff) {
+                        /* drop the byte: no ID byte yet, or an ID not decoded */
                         continue;
                     }
                     stream[cur_id].buff[stream[cur_id].buff_len] = c;
@@ -164,7 +176,7 @@ int decode_etb_stream(struct stream *etb_stream, int unaligned)
                             goto exit_decode_etb_stream;
                         }
                         for (i = (nr_stream - nr_new); i < nr_stream; i++) {
-                            if (init_stream(&(stream[i]), etb_stream)) {
+                            if (init_stream(&(stream[i]), etb_stream, i)) {
                                 LOGE("Fail to init stream %d\n", i);
                                 ret = -1;
                                 goto exit_decode_etb_stream;
@@ -174,8 +186,8 @@ int decode_etb_stream(struct stream *etb_stream, int unaligned)
                 } else {
                     /* data byte */
                     c |= (end & (1 << (byte_idx / 2)))? 1: 0;
-                    if (cur_id < 0) {
-                        /* drop the byte since there is no ID byte yet */
+                    if (cur_id < 0 || !stream[cur_id].buff) {
+                        /* drop the byte: no ID byte yet, or an ID not decoded */
                         continue;
                     }
                     stream[cur_id].buff[stream[cur_id].buff_len] = c;
